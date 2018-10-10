@@ -38,24 +38,15 @@ read_data <- function(biomfile, mappingfile, pool=NULL) {
   colnames(myTaxTable) <- c("Kingdom","Phylum", "Class", "Order", "Family", "Genus","Species")
   OTU = otu_table(data)
   TAX = tax_table(myTaxTable)
-  myPhyloSeq_allData <- phyloseq(OTU,TAX)  
+  myPhyloSeq_allData <- phyloseq(OTU,TAX) 
+  
+  if(missing(pool)){
+    pool = diag(x = 1, nrow = length(OTU[1,]), ncol=length(OTU[1,]), names = TRUE)
+  }
+  
   OTU_pooled=poolSamples(myPhyloSeq_allData, pool)
   myPhyloSeq <- merge_phyloseq(OTU_pooled, TAX)
   return(myPhyloSeq)
-}
-
-
-# Little helper to create pooling matrix
-# Need to specify how to present the pooling or add function to pull this out of mapping file
-makePool<-function(size){
-  
-  pool=matrix(rep(0,300), ncol=30, nrow=10)
-  for(i in 1:nrow(pool)){
-    for(j in 1:size){
-      pool[i,((i-1)*size + j)]=1
-    }
-  }
-  return(pool)
 }
 
 
