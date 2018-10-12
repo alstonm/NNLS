@@ -2,17 +2,17 @@
 ## Solving a system of linear equations for a non-square          ##
 ## matrix via the use of non-negative least squares [NNLS].       ##
 ## Returns the solution 'weights' and residual sum of squares.    ##
-##                                                                ## 
+##                                                                ##
 ## Mark Alston,                                                   ##
 ## Cell & Developmental Biology,                                  ##
-## John Innes Centre, Norwich, UK.     
-## mark.alston@jic.ac.uk  
-## 
+## John Innes Centre, Norwich, UK.
+## mark.alston@jic.ac.uk
+##
 ## Sarah Bastkowski,
 ## Earlham Institute, Norwich, UK.
 ## sarah.bastkowski@earlham.ac.uk
 ##
-##                                              
+##
 #####################################################################
 
 
@@ -20,8 +20,8 @@
 ## ========================================================================================================= ##
 ## READ IN THE OTU table
 ## ========================================================================================================= ##
-## MAPPING FILE TO BE USED: 'mappingFile.txt' 
-## OTU TABLE TO BE USED:    'CSS_norm_rawValues.biom' 
+## MAPPING FILE TO BE USED: 'mappingFile.txt'
+## OTU TABLE TO BE USED:    'CSS_norm_rawValues.biom'
 
 
 
@@ -32,31 +32,32 @@ read_data <- function(biomfile, mappingfile, pool=NULL) {
   library("biomformat")
   library("phyloseq")
   
-  data = import_biom(biomfile)   
+  data = import_biom(biomfile)
   SAMPLES = import_qiime_sample_data(mappingfile)
   myTaxTable <- tax_table(data)
   colnames(myTaxTable) <- c("Kingdom","Phylum", "Class", "Order", "Family", "Genus","Species")
   OTU = otu_table(data)
   TAX = tax_table(myTaxTable)
-  myPhyloSeq_allData <- phyloseq(OTU,TAX) 
+  myPhyloSeq_allData <- phyloseq(OTU,TAX)
   
   if(missing(pool)){
-    pool = diag(x = 1, nrow = length(OTU[1,]), ncol=length(OTU[1,]), names = TRUE)
+    myPhyloSeq <-myPhyloSeq_allData
+  } else {
+    OTU_pooled=poolSamples(myPhyloSeq_allData, pool)
+    myPhyloSeq <- merge_phyloseq(OTU_pooled, TAX)
   }
   
-  OTU_pooled=poolSamples(myPhyloSeq_allData, pool)
-  myPhyloSeq <- merge_phyloseq(OTU_pooled, TAX)
   return(myPhyloSeq)
 }
 
 
-# Input: OTU table and matrix that indicates which samples should be pooled, 
+# Input: OTU table and matrix that indicates which samples should be pooled,
 # row is one pool and columns (number of samples) indicates which Samples are in this pool
 # if entry is 0 its not in pool, if sample is 1 it is in pool.
 # single samples are treated as a pool as well, ie one row with zeros except one 1
 poolSamples<-function(phyloseqObj, pool) {
   pooledOTU=rep(0,nrow(otu_table(phyloseqObj)))
- 
+  
   for(i in 1:nrow(pool)){
     C=matrix(rep(0, nrow(otu_table(phyloseqObj))))
     for(j in 1:ncol(pool)) {
@@ -71,61 +72,63 @@ poolSamples<-function(phyloseqObj, pool) {
   return(otu_table(pooledOTU, taxa_are_rows = TRUE))
 }
 
-singles=c(1,2,3)
-mixed=c(4,5,6,7,8,9,10)
+
 ## ========================================================================================================= ##
 ## collapse OTU table at <level> given as string, eg "Family", and generate matrix 'A' (single communities)
 ## and 'b' (mixed communities)
 ## Input: the phyloseq object, level, vector stating which columns in the matrix (OTU) are single samples (A)
 ## and which ones are mixed (b)
 ## ========================================================================================================= ##
-set_up_A <- function(myPhyloSeq, level, singles) {
-  
+set_up_A <- function(myPhyloSeq, level, singles, mixed) {
+  #Combine A and b in dataframe including samplenames
   bacteria_level <- tax_glom(myPhyloSeq, taxrank=level)
   bacteria_level_df <- as.data.frame(get_taxa(otu_table(bacteria_level)))
   #need to extract this
-  bacteria_level_singleComm_df  <-  bacteria_level_df[,singles] 
+  bacteria_level_singleComm_df  <-  bacteria_level_df[,singles]
   # A
-  bacteria_family_matrix_A <- as.matrix(bacteria_level_singleComm_df)
+  bacteria_family_matrix_A <- data.frame(as.matrix(bacteria_level_singleComm_df))
+  colnames(bacteria_family_matrix_A)=colnames(myPhyloSeq@otu_table@.Data)[singles]
+  
   return(bacteria_family_matrix_A)
 }
 
 set_up_b <- function(myPhyloSeq, level, mixed) {
-# b
-my_bvectors <- list()
-for (i in 1:length(mixed)) 
-{
+  # b
+  my_bvectors <- list()
   bacteria_level <- tax_glom(myPhyloSeq, taxrank=level)
   bacteria_level_df <- as.data.frame(get_taxa(otu_table(bacteria_level)))
-  # create a name...
-  name <- paste("b_M0",i,"_bac_family_df", sep = "")
+  for (i in 1:length(mixed))
+  {
   
-  # ...and assign something to an object with that name
-  bvectorObject <- assign(name, bacteria_level_df[,mixed[i]])
+    # create a name...
+    name <- paste("b_M0",i,"_bac_family_df", sep = "")
+    
+    # ...and assign something to an object with that name
+    bvectorObject <- assign(name, bacteria_level_df[,mixed[i]])
+    
+    # create a name for the b-vector
+    bvector_name <- paste("bv_M0",i,sep = "")
+    
+    # assign something to an object with that name & add the b-vector to a list 'my_bvectors'
+    my_bvectors[[i]] <- assign(bvector_name, as.matrix(bvectorObject))
+  }
   
-  # create a name for the b-vector
-  bvector_name <- paste("bv_M0",i,sep = "")
+  return(my_bvectors)
   
-  # assign something to an object with that name & add the b-vector to a list 'my_bvectors'
-  my_bvectors[[i]] <- assign(bvector_name, as.matrix(bvectorObject))
-}
-
-return(my_bvectors)
-
 }
 
 runNNLS<-function(matrix, vector){
   library("nnls")
   my_weightsList <- list()
   
-  for (i in 1:length(vector)) 
+  for (i in 1:length(vector))
   {
     # create a name...
     weightName <- paste("weight_M",i, sep = "")
-    weightObject <-  nnls(matrix,vector[[i]])
+    weightObject <-  nnls(as.matrix(matrix),vector[[i]])
     my_weightsList[[i]] <- assign(weightName, weightObject$x)
   }
-  
+  #add names for samples to be used in barchart
   
   return(my_weightsList)
 }
@@ -133,7 +136,6 @@ runNNLS<-function(matrix, vector){
 ## ========================================================================================================= ##
 ## THIRD: Plot, arrange and output the solution 'weight' values as barcharts
 ## ========================================================================================================= ##
-
 
 
 ######## THE BARCHART OUTPUT FUNCTION ##############
@@ -147,7 +149,7 @@ outputBarcharts <- function(weightSolutions){
   trellis.objects.list = list()
   seed_sample_names=c("1","2","3")
   
-  for (i in 1:length(weightSolutions)) 
+  for (i in 1:length(weightSolutions))
   {
     trellis.objects.list[[i]] <- barchart(as.table(weightSolutions[[i]]),
                                           main=colnames(weightSolutions)[i],
@@ -168,5 +170,5 @@ outputBarcharts <- function(weightSolutions){
   
   
   return(multiPageGrobs)
-} 
+}
 # end of 'outputBarcharts' function
