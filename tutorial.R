@@ -23,7 +23,7 @@ makePool<-function(size){
 
 # read in data and create obj
 
-myObj=read_data("../NNLS_data/NNLS/CSS_norm_mcf-0.001.biom","../NNLS_data/NNLS/mappingFile.txt")
+myObj=read_data("CSS_norm_mcf-0.001.biom","mappingFile.txt")
 
 #singles=c(1,2,3)
 singles=c(1,2,3,4,5,6,7,8,9)
@@ -34,9 +34,8 @@ mixed=c(10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30)
 
 A=set_up_A(myPhyloSeq = myObj, level="Family", singles)
 b=set_up_b(myPhyloSeq = myObj, level="Family", mixed)
-
-write.table(runNNLS(A, b), sep="\t", "refactored_solutionWeights.txt")
 weightSolutions=runNNLS(A, b)
+write.table(weightSolutions, sep="\t", "refactored_solutionWeights.txt")
 ggsave(file = "multipage_A4.pdf", outputBarcharts(weightSolutions), width = 8.27, height = 11.69, unit = "in")
 
 
