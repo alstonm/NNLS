@@ -99,20 +99,10 @@ set_up_b <- function(myPhyloSeq, level, mixed) {
   bacteria_level_df <- as.data.frame(get_taxa(otu_table(bacteria_level)))
   for (i in 1:length(mixed))
   {
-  
-    # create a name...
-    name <- paste("b_M0",i,"_bac_family_df", sep = "")
-    
-    # ...and assign something to an object with that name
-    bvectorObject <- assign(name, bacteria_level_df[,mixed[i]])
-    
-    # create a name for the b-vector
-    bvector_name <- paste("bv_M0",i,sep = "")
-    
-    # assign something to an object with that name & add the b-vector to a list 'my_bvectors'
-    my_bvectors[[i]] <- assign(bvector_name, as.matrix(bvectorObject))
+    my_bvectors[[i]] <-bacteria_level_df[,mixed[i]]
   }
   
+  names(my_bvectors)=colnames(myPhyloSeq@otu_table@.Data)[mixed]
   return(my_bvectors)
   
 }
@@ -123,13 +113,14 @@ runNNLS<-function(matrix, vector){
   
   for (i in 1:length(vector))
   {
-    # create a name...
-    weightName <- paste("weight_M",i, sep = "")
+   
     weightObject <-  nnls(as.matrix(matrix),vector[[i]])
-    my_weightsList[[i]] <- assign(weightName, weightObject$x)
-  }
+    
+    my_weightsList[[i]] <- data.frame(weightObject$x, colnames=colnames(matrix))
+    names(my_weightsList)[i]=names(vector)[i]
+    }
   #add names for samples to be used in barchart
-  
+ 
   return(my_weightsList)
 }
 
@@ -147,14 +138,13 @@ outputBarcharts <- function(weightSolutions){
   
   # create a list to hold the barchart "trellis" objects
   trellis.objects.list = list()
-  seed_sample_names=c("1","2","3")
   
   for (i in 1:length(weightSolutions))
   {
-    trellis.objects.list[[i]] <- barchart(as.table(weightSolutions[[i]]),
-                                          main=colnames(weightSolutions)[i],
-                                          horizontal=FALSE, col="steelblue", ylab="Weight", aspect=1,
-                                          scales=list(x=list(rot=70, labels=seed_sample_names, cex=1.1)))
+    trellis.objects.list[[i]] <- barchart(as.table(weightSolutions[[i]]$weightObject.x),
+                                          main=names(weightSolutions)[i],
+                                          horizontal=FALSE, col="steelblue", ylab="Weight", xlab = "Samples", aspect=1,
+                                          scales=list(x=list(rot=70, labels=weightSolutions[[i]]$colnames, cex=1.1)))
   }
   
   
