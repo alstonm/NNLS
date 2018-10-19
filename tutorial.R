@@ -21,9 +21,13 @@ makePool<-function(size){
 # make pool
 pool=makePool(3)
 
+cellcountsfile=read.csv("../nnls_cell_counts.csv")
+cellcounts=cellcountsfile$qPCR.replicates[1:9]
+
+
 # read in data and create obj
 
-myObj=read_data("CSS_norm_mcf-0.001.biom","mappingFile.txt", pool = pool)
+myObj=read_data("CSS_norm_mcf-0.001.biom","mappingFile.txt", pool = pool, cellcounts)
 
 singles=c(1,2,3)
 #singles=c(1,2,3,4,5,6,7,8,9)
