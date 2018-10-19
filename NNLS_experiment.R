@@ -27,7 +27,7 @@
 
 #Set up function that reads in files, pooles samples
 
-read_data <- function(biomfile, mappingfile, pool=NULL) {
+read_data <- function(biomfile, mappingfile, pool=NULL, cellcounts=NULL) {
   
   library("biomformat")
   library("phyloseq")
@@ -38,18 +38,35 @@ read_data <- function(biomfile, mappingfile, pool=NULL) {
   colnames(myTaxTable) <- c("Kingdom","Phylum", "Class", "Order", "Family", "Genus","Species")
   OTU = otu_table(data)
   TAX = tax_table(myTaxTable)
-  myPhyloSeq_allData <- phyloseq(OTU,TAX)
+  myPhyloSeq <- phyloseq(OTU,TAX)
   
-  if(missing(pool)){
-    myPhyloSeq <-myPhyloSeq_allData
-  } else {
-    OTU_pooled=poolSamples(myPhyloSeq_allData, pool)
+  if(!missing(cellcounts)){
+    myPhyloSeq=normByCellcount(myPhyloSeq, cellcountvalues = cellcounts)
+  }
+  
+  if(!missing(pool)){
+    OTU_pooled=poolSamples(myPhyloSeq, pool)
     myPhyloSeq <- merge_phyloseq(OTU_pooled, TAX)
   }
+  
+ 
   
   return(myPhyloSeq)
 }
 
+#Normalise by cellcount
+
+normByCellcount <- function(phyloseqObj, cellcountvalues) {
+  pooledOTU=rep(0,nrow(otu_table(phyloseqObj)))
+  
+  for(i in 1:length(cellcountvalues)){
+    for(j in 1:nrow(phyloseqObj@otu_table@.Data)){
+      phyloseqObj@otu_table@.Data[j,i]=phyloseqObj@otu_table@.Data[j,i]*cellcountvalues[i]
+    }
+  }
+  
+  return(phyloseqObj)
+}
 
 # Input: OTU table and matrix that indicates which samples should be pooled,
 # row is one pool and columns (number of samples) indicates which Samples are in this pool
@@ -63,7 +80,7 @@ poolSamples<-function(phyloseqObj, pool) {
     for(j in 1:ncol(pool)) {
       C=C+ pool[i,j]*otu_table(phyloseqObj)[,j]
     }
-    pooledOTU=cbind.data.frame(pooledOTU,C)
+    pooledOTU=cbind.data.frame(pooledOTU,C/sum(pool[i,]))
     
   }
   row.names(pooledOTU)=row.names(tax_table(phyloseqObj))
@@ -124,6 +141,22 @@ runNNLS<-function(matrix, vector){
   return(my_weightsList)
 }
 
+
+weighttoPercent<-function(weights){
+  
+  percentages=list()
+  for (i in 1:length(weights))
+  {
+    percent=vector(mode="integer", length = length(weights[[i]]$weightObject.x))
+    for (j in 1:length(weights[[i]]$weightObject.x)){
+      percent[j] <-  weights[[i]]$weightObject.x[j]/sum(weights[[i]]$weightObject.x)
+    }
+    percentages[[i]]=percent
+  }
+  #add names for samples to be used in barchart
+  
+  return(percentages)
+}
 ## ========================================================================================================= ##
 ## THIRD: Plot, arrange and output the solution 'weight' values as barcharts
 ## ========================================================================================================= ##
@@ -131,33 +164,55 @@ runNNLS<-function(matrix, vector){
 
 ######## THE BARCHART OUTPUT FUNCTION ##############
 
-outputBarcharts <- function(weightSolutions){
+outputBarcharts <- function(weightSolutions, percent=TRUE){
   library(lattice)
   library(gridExtra)
   library(ggplot2)
   
-  # create a list to hold the barchart "trellis" objects
-  trellis.objects.list = list()
-  
-  for (i in 1:length(weightSolutions))
-  {
-    trellis.objects.list[[i]] <- barchart(as.table(weightSolutions[[i]]$weightObject.x),
-                                          main=names(weightSolutions)[i],
-                                          horizontal=FALSE, col="steelblue", ylab="Weight", xlab = "Samples", aspect=1,
-                                          scales=list(x=list(rot=70, labels=weightSolutions[[i]]$colnames, cex=1.1)))
+  if (percent==TRUE){
+    p=weighttoPercent(weights = weightSolutions)
+    trellis.objects.list = list()
+    
+    for (i in 1:length(weightSolutions))
+    {
+      trellis.objects.list[[i]] <- barchart(as.table(p[[i]]),
+                                            main=names(weightSolutions)[i],
+                                            horizontal=FALSE, col="steelblue", ylab="Weight", xlab = "Samples", aspect=1,
+                                            scales=list(x=list(rot=70, labels=weightSolutions[[i]]$colnames, cex=1.1)))
+    }
+    
+    
+    # Output and arrange the generated barchart
+    # see: https://cran.r-project.org/web/packages/gridExtra/vignettes/arrangeGrob.html
+    # Need to create graphical objects (grobs) to use 'grid.arrange' etc. ...whatever...
+    
+    # multi-page output probably best for most users
+    multiPageGrobs <- marrangeGrob(grobs = trellis.objects.list, nrow=4, ncol=2)
+    
+  }else{
+    # create a list to hold the barchart "trellis" objects
+    trellis.objects.list = list()
+    
+    for (i in 1:length(weightSolutions))
+    {
+      trellis.objects.list[[i]] <- barchart(as.table(weightSolutions[[i]]$weightObject.x),
+                                            main=names(weightSolutions)[i],
+                                            horizontal=FALSE, col="steelblue", ylab="Weight", xlab = "Samples", aspect=1,
+                                            scales=list(x=list(rot=70, labels=weightSolutions[[i]]$colnames, cex=1.1)))
+    }
+    
+    
+    # Output and arrange the generated barchart
+    # see: https://cran.r-project.org/web/packages/gridExtra/vignettes/arrangeGrob.html
+    # Need to create graphical objects (grobs) to use 'grid.arrange' etc. ...whatever...
+    
+    # multi-page output probably best for most users
+    multiPageGrobs <- marrangeGrob(grobs = trellis.objects.list, nrow=4, ncol=2)
+    
   }
-  
-  
-  # Output and arrange the generated barchart
-  # see: https://cran.r-project.org/web/packages/gridExtra/vignettes/arrangeGrob.html
-  # Need to create graphical objects (grobs) to use 'grid.arrange' etc. ...whatever...
-  
-  # multi-page output probably best for most users
-  multiPageGrobs <- marrangeGrob(grobs = trellis.objects.list, nrow=4, ncol=2)
-  
+ 
   # Send to A4-sized output
   # note: 'ggsave' recognises the extensions eps/ps, tex (pictex), pdf, jpeg, tiff, png, bmp, svg and wmf (windows only).
-  
   
   return(multiPageGrobs)
 }
